@@ -1,0 +1,9 @@
+{
+  "code" : "query.compiler.malformed",
+  "error" : true,
+  "message" : "Could not parse SoQL query \"select analysis_neighborhood,count(*) as n,avg(cast(violation_count as number)) as avg_violations where inspection_date between '2025-01-01T00:00:00' and '2025-12-31T23:59:59' AND inspection_type='Routine' AND analysis_neighborhood is not null AND violation_count is not null group by analysis_neighborhood having count(*) >= 30 order by avg_violations DESC\" at line 1 character 69: Expected one of `)', `,', `OR', `AND', `IS', `IS NOT', `LIKE', `NOT LIKE', `BETWEEN', `NOT BETWEEN', `IN', `NOT IN', an operator, `::', `.', `[', or `(', but got `AS'",
+  "data" : {
+    "query" : "select analysis_neighborhood,count(*) as n,avg(cast(violation_count as number)) as avg_violations where inspection_date between '2025-01-01T00:00:00' and '2025-12-31T23:59:59' AND inspection_type='Routine' AND analysis_neighborhood is not null AND violation_count is not null group by analysis_neighborhood having count(*) >= 30 order by avg_violations DESC",
+    "position" : { }
+  }
+}
