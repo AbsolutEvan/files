@@ -1,0 +1,9 @@
+{
+  "code" : "query.compiler.malformed",
+  "error" : true,
+  "message" : "Could not parse SoQL query \"select date_trunc_ym(inspection_date) as month,count(*) as n,avg(iif(facility_rating_status='Pass',1,0))*100 as pass_rate_pct,avg(cast(violation_count as number)) as avg_violations where inspection_date between '2025-01-01T00:00:00' and '2025-12-31T23:59:59' AND inspection_type='Routine' group by month order by month ASC\" at line 1 character 152: Expected one of `)', `,', `OR', `AND', `IS', `IS NOT', `LIKE', `NOT LIKE', `BETWEEN', `NOT BETWEEN', `IN', `NOT IN', an operator, `::', `.', `[', or `(', but got `AS'",
+  "data" : {
+    "query" : "select date_trunc_ym(inspection_date) as month,count(*) as n,avg(iif(facility_rating_status='Pass',1,0))*100 as pass_rate_pct,avg(cast(violation_count as number)) as avg_violations where inspection_date between '2025-01-01T00:00:00' and '2025-12-31T23:59:59' AND inspection_type='Routine' group by month order by month ASC",
+    "position" : { }
+  }
+}
