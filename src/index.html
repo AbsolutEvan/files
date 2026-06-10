@@ -28,7 +28,8 @@
   .bucket { stroke-width:0.8; }
   .bucket-label { font-size:24px; font-weight:800; fill:#555; }
   .year-label { font-size:13px; font-weight:600; fill:#333; text-anchor:middle; }
-  .ribbon { stroke:none; }
+  .ribbon { stroke:none; pointer-events:all; }
+  #tipPin { border-color:#222; box-shadow:0 4px 16px rgba(0,0,0,.18); }
   .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
   .legend .bar { width:170px; height:10px; border-radius:5px;
      background:linear-gradient(to right,
@@ -69,12 +70,14 @@
   <div class="legend">
     <span>declined</span><span class="bar"></span><span>improved</span>
     <span style="margin-left:8px;">·</span>
+    <span><svg width="14" height="10"><rect width="14" height="10" rx="2" fill="#9aa0a6"/></svg> no change</span>
     <span><svg width="14" height="10"><rect width="14" height="10" rx="2" fill="#cfcfcf"/></svg> no data</span>
   </div>
 </div>
 
 <div id="wrap">
   <svg id="chart"></svg>
+  <div class="tooltip" id="tipPin"></div>
   <div class="tooltip" id="tip"></div>
 </div>
 
@@ -101,11 +104,14 @@ const GRADE_COLORS = {A:"#0a2f7a", B:"#2563c9", C:"#6f42c1", D:"#a51bb5", F:"#d4
 
 const svg = d3.select("#chart");
 const gRoot = svg.append("g");
-const tip = d3.select("#tip");
+const tip = d3.select("#tip");        // follows the cursor on hover
+const tipPin = d3.select("#tipPin");  // anchored, stays up for the selected school
+const wrap = d3.select("#wrap");
 
 // ---- school name lookup ----
 const byName = new Map();
-SCHOOLS.forEach(s => { if (s.name) byName.set(s.name, s); });
+const byId = new Map();
+SCHOOLS.forEach(s => { if (s.name) byName.set(s.name, s); byId.set(s.school_id, s); });
 d3.select("#schoolnames").selectAll("option")
   .data([...byName.keys()].sort()).join("option").attr("value", d=>d);
 
@@ -221,7 +227,8 @@ function render(){
       if (!a || !b) continue;                       // gap -> ribbon breaks
       const pa = s.years[yi][subject], pb = s.years[yi+1][subject];
       const known = pa!==null && pb!==null;
-      const col = known ? color(pb-pa) : "#cfcfcf";
+      // gray means exactly no change; lighter gray means we have no passing data.
+      const col = !known ? "#cfcfcf" : (pb-pa===0 ? "#9aa0a6" : color(pb-pa));
       const x0=a.x+NODE_W, x1=b.x, cx=(x0+x1)/2;
       const d=`M${x0},${a.y} C${cx},${a.y} ${cx},${b.y} ${x1},${b.y}`
             +`L${x1},${b.y+b.h} C${cx},${b.y+b.h} ${cx},${a.y+a.h} ${x0},${a.y+a.h}Z`;
@@ -235,39 +242,69 @@ function render(){
     .attr("fill", d=>d.col)
     .attr("fill-opacity", d=> d.known ? 0.62 : 0.32)
     .attr("data-id", d=>d.s.school_id)
-    .on("mousemove", (e,d)=> showTip(e,d.s))
-    .on("mouseenter", (e,d)=> highlight(d.s.school_id))
-    .on("mouseleave", ()=>{ clearHi(); tip.style("opacity",0); });
+    .on("mousemove", (e,d)=> showHoverTip(e,d.s))
+    .on("mouseenter", (e,d)=>{ hovered=d.s.school_id; applyHi(); })
+    .on("mouseleave", ()=>{ hovered=null; applyHi(); tip.style("opacity",0); });
 
-  applyHighlight();
+  // Non-interactive layer that re-draws highlighted schools' ribbons on top.
+  // Keeping it separate means the interactive base ribbons never get reordered,
+  // so hovering stays stable (raising the hovered node would fire mouseleave).
+  hiLayer = gRoot.append("g").attr("class","hi-layer").style("pointer-events","none");
+  allPaths = paths;
+  curLayout = {slot, colX};
+  applyHi();
 }
 
-// ---- highlight handling ----
-let pinned = null;     // school_id chosen via lookup
-function highlight(id){ gRoot.selectAll("path.ribbon")
-  .attr("fill-opacity", function(){ return this.getAttribute("data-id")===id ? 0.95 : 0.06; })
-  .attr("stroke", function(){ return this.getAttribute("data-id")===id ? "#222" : "none"; })
-  .attr("stroke-width", function(){ return this.getAttribute("data-id")===id ? 0.7 : 0; })
-  // raise the highlighted school's segments above the dimmed crowd, otherwise a
-  // ribbon in a dense band gets buried under hundreds of faint overlapping ones.
-  .filter(function(){ return this.getAttribute("data-id")===id; }).raise(); }
-function clearHi(){ if (pinned){ highlight(pinned); } else applyHighlight(); }
-function applyHighlight(){
-  if (pinned){ highlight(pinned); }
-  else gRoot.selectAll("path.ribbon")
-    .attr("fill-opacity", function(){ return d3.select(this).datum().known ? 0.62 : 0.32; })
-    .attr("stroke","none").attr("stroke-width",0);
+// ---- highlight + tooltip handling ----
+let pinned = null;     // school_id chosen via the search box (sticky)
+let hovered = null;    // school_id under the cursor (transient)
+let hiLayer = null, allPaths = [], curLayout = null;
+
+function applyHi(){
+  const set = new Set([pinned, hovered].filter(Boolean));
+  // base ribbons: normal when nothing is highlighted, otherwise dim everything.
+  gRoot.selectAll("path.ribbon").attr("fill-opacity", function(){
+    if (!set.size) { const d=d3.select(this).datum(); return d.known?0.62:0.32; }
+    return 0.06;
+  });
+  // overlay: bright copies of the highlighted schools' segments, drawn on top.
+  hiLayer.selectAll("path")
+    .data(allPaths.filter(p=>set.has(p.s.school_id)), p=>p.s.school_id+"_"+p.yi)
+    .join("path")
+      .attr("d", p=>p.d).attr("fill", p=>p.col)
+      .attr("fill-opacity", 0.97).attr("stroke","#222").attr("stroke-width",0.8);
+  // selected school keeps a persistent, anchored tooltip; hover gets its own.
+  if (pinned) showPinTip(); else tipPin.style("opacity",0);
 }
 
-function showTip(e, s){
+function tipHtml(s){
   const rows = s.years.map(p=>`<tr><td>FY${p.year}</td><td><b>${p.grade||"—"}</b></td>`
     +`<td>ELA ${fmt(p.ela_pass)}</td><td>Math ${fmt(p.math_pass)}</td>`
     +`<td>${p.enrollment?d3.format(",")(p.enrollment):"—"}</td></tr>`).join("");
-  tip.html(`<h4>${s.name||s.school_id}</h4>`
+  return `<h4>${s.name||s.school_id}</h4>`
      +`<div style="color:#888;margin-bottom:4px">${s.district||""} · ${s.county||""} County`
-     +`${s.charter?" · charter":""}</div><table>${rows}</table>`)
-     .style("opacity",1)
-     .style("left",(e.offsetX+18)+"px").style("top",(e.offsetY+14)+"px");
+     +`${s.charter?" · charter":""}</div><table>${rows}</table>`;
+}
+function showHoverTip(e, s){
+  const r = wrap.node().getBoundingClientRect();
+  tip.html(tipHtml(s)).style("opacity",1)
+     .style("left",(e.clientX-r.left+16)+"px").style("top",(e.clientY-r.top+14)+"px");
+}
+function showPinTip(){
+  const s = byId.get(pinned);
+  if (!s || !curLayout){ tipPin.style("opacity",0); return; }
+  tipPin.html(tipHtml(s)).style("opacity",1);
+  // anchor near the school's right-most endpoint, flipped left to stay on-screen.
+  const sl = curLayout.slot[pinned];
+  let yi=-1; for (let i=YEARS.length-1;i>=0;i--){ if (sl && sl[i]){ yi=i; break; } }
+  let left=12, top=12;
+  if (yi>=0){
+    const node = sl[yi];
+    top = Math.max(8, node.y);
+    left = node.x - 252;
+    if (left < 8) left = node.x + NODE_W + 12;
+  }
+  tipPin.style("left",left+"px").style("top",top+"px");
 }
 const fmt = v => v===null? "·" : v+"%";
 
@@ -282,7 +319,7 @@ d3.select("#filter").on("change", function(){ filterComplete=this.checked; rende
 d3.select("#lookup").on("change input", function(){
   const s = byName.get(this.value);
   pinned = s ? s.school_id : null;
-  applyHighlight();
+  applyHi();
 });
 
 window.addEventListener("resize", render);
