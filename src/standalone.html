@@ -31,13 +31,13 @@ window.SCHOOLS = [{"school_id":"1000047","name":"Think Through Academy","distric
   .switch { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; color:#444; }
   #wrap { position:relative; }
   svg { display:block; width:100%; height:auto; }
-  .bucket { fill:#efefef; stroke:#dcdcdc; }
+  .bucket { stroke-width:0.8; }
   .bucket-label { font-size:12px; font-weight:600; fill:#555; }
   .year-label { font-size:13px; font-weight:600; fill:#333; text-anchor:middle; }
   .ribbon { stroke:none; }
   .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
   .legend .bar { width:160px; height:10px; border-radius:5px;
-     background:linear-gradient(to right,#d73027,#fee08b,#1a9850); }
+     background:linear-gradient(to right,#5e3c99,#f7f7f7,#e66101); }
   .tooltip { position:absolute; pointer-events:none; background:#fff; border:1px solid #ccc;
      border-radius:8px; padding:9px 11px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12);
      max-width:260px; opacity:0; transition:opacity .08s; }
@@ -95,7 +95,8 @@ const MARGIN = {top:46, right:30, bottom:20, left:46};
 let subject = "ela_pass";
 let filterComplete = false;
 
-const color = d3.scaleDiverging(d3.interpolateRdYlGn).domain([-12,0,12]).clamp(true);
+const color = d3.scaleDiverging(d3.interpolatePuOr).domain([12,0,-12]).clamp(true);
+const GRADE_COLORS = {A:"#1a9850", B:"#a6d96a", C:"#ffd24d", D:"#fc8d59", F:"#d73027"};
 
 const svg = d3.select("#chart");
 const gRoot = svg.append("g");
@@ -189,10 +190,16 @@ function render(){
       if (n.y1 - n.y0 < 0.5) return;
       bg.append("rect").attr("class","bucket")
         .attr("x", n.x).attr("y", n.y0).attr("width", NODE_W)
-        .attr("height", Math.max(0,n.y1-n.y0)).attr("rx",3);
-      if (yi===0)
+        .attr("height", Math.max(0,n.y1-n.y0)).attr("rx",3)
+        .attr("fill", GRADE_COLORS[g])
+        .attr("stroke", d3.color(GRADE_COLORS[g]).darker(0.6));
+      if (yi===0 || yi===YEARS.length-1)
         bg.append("text").attr("class","bucket-label")
-          .attr("x", n.x-8).attr("y",(n.y0+n.y1)/2+4).attr("text-anchor","end").text(g);
+          .attr("x", yi===0 ? n.x-8 : n.x+NODE_W+8)
+          .attr("y",(n.y0+n.y1)/2+4)
+          .attr("text-anchor", yi===0 ? "end" : "start")
+          .attr("fill", d3.color(GRADE_COLORS[g]).darker(1.1))
+          .text(g);
     });
     gRoot.append("text").attr("class","year-label")
       .attr("x", colX(yi)+NODE_W/2).attr("y", MARGIN.top-22).text("FY"+y);
@@ -231,13 +238,15 @@ function render(){
 // ---- highlight handling ----
 let pinned = null;     // school_id chosen via lookup
 function highlight(id){ gRoot.selectAll("path.ribbon")
-  .attr("fill-opacity", function(){ return this.getAttribute("data-id")===id
-     ? 0.95 : 0.07; }); }
+  .attr("fill-opacity", function(){ return this.getAttribute("data-id")===id ? 0.95 : 0.06; })
+  .attr("stroke", function(){ return this.getAttribute("data-id")===id ? "#222" : "none"; })
+  .attr("stroke-width", function(){ return this.getAttribute("data-id")===id ? 0.7 : 0; }); }
 function clearHi(){ if (pinned){ highlight(pinned); } else applyHighlight(); }
 function applyHighlight(){
   if (pinned){ highlight(pinned); }
-  else gRoot.selectAll("path.ribbon").attr("fill-opacity", function(){
-     return d3.select(this).datum().known ? 0.62 : 0.32; });
+  else gRoot.selectAll("path.ribbon")
+    .attr("fill-opacity", function(){ return d3.select(this).datum().known ? 0.62 : 0.32; })
+    .attr("stroke","none").attr("stroke-width",0);
 }
 
 function showTip(e, s){
