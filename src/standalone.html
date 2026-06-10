@@ -52,7 +52,8 @@ window.SCHOOLS = [{"school_id":"1000047","name":"Think Through Academy","distric
 <header>
   <h1>Arizona high schools: A–F letter grades over time</h1>
   <div class="sub">Each ribbon is a school flowing through its letter grade each year (FY2022–FY2025).
-    Ribbon thickness = enrollment. Color = change in Grade&nbsp;11 passing rate over each segment.</div>
+    Within each grade, schools are stacked by Grade&nbsp;11 passing rate (highest at top).
+    Ribbon thickness = enrollment. Color = change in passing rate over each segment.</div>
 </header>
 
 <div class="controls">
@@ -145,12 +146,19 @@ function layout(schools, W){
   const usable = TARGET_H;
   const H = usable + MARGIN.top + MARGIN.bottom + (GRADES.length-1)*PAD_BUCKET;
 
-  // Stable, size-based order within each bucket: bigger schools ride near the
-  // top, so a school that keeps the same grade stays roughly level year to year.
+  // Order within each bucket by the selected subject's passing rate: highest
+  // passers ride at the top of the band, lowest at the bottom, so a ribbon's
+  // height within its grade encodes passing rate. Schools with no data sink
+  // to the bottom of the band.
   for (const key in nodes){
     const yi = +key.split("_")[0];
-    nodes[key].schools.sort((a,b)=>
-      (w(b,yi)-w(a,yi)) || d3.ascending(a.school_id,b.school_id));
+    nodes[key].schools.sort((a,b)=>{
+      const pa=a.years[yi][subject], pb=b.years[yi][subject];
+      if (pa===null && pb===null) return d3.ascending(a.school_id,b.school_id);
+      if (pa===null) return 1;
+      if (pb===null) return -1;
+      return d3.descending(pa,pb) || d3.ascending(a.school_id,b.school_id);
+    });
   }
 
   // assign slots: slot[schoolId][yi] = {x0,x1,y,h}
