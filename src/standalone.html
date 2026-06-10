@@ -153,19 +153,24 @@ function layout(schools, W){
   const usable = TARGET_H;
   const H = usable + MARGIN.top + MARGIN.bottom + (GRADES.length-1)*PAD_BUCKET;
 
-  // Order within each bucket by the selected subject's passing rate: highest
-  // passers ride at the top of the band, lowest at the bottom, so a ribbon's
-  // height within its grade encodes passing rate. Schools with no data sink
-  // to the bottom of the band.
+  // Order within each bucket by the selected subject's passing rate (highest at
+  // top). When a year has no passing data, fall back to the school's nearest
+  // known year so its ribbon stays at roughly its real level through the gap
+  // instead of diving to the bottom and back. Schools with no data in any year
+  // sort to the bottom.
+  const rankVal = (s,yi)=>{
+    if (s.years[yi][subject] != null) return s.years[yi][subject];
+    for (let d=1; d<YEARS.length; d++){
+      const lo=yi-d, hi=yi+d;
+      if (lo>=0 && s.years[lo][subject]!=null) return s.years[lo][subject];
+      if (hi<YEARS.length && s.years[hi][subject]!=null) return s.years[hi][subject];
+    }
+    return -1;
+  };
   for (const key in nodes){
     const yi = +key.split("_")[0];
-    nodes[key].schools.sort((a,b)=>{
-      const pa=a.years[yi][subject], pb=b.years[yi][subject];
-      if (pa===null && pb===null) return d3.ascending(a.school_id,b.school_id);
-      if (pa===null) return 1;
-      if (pb===null) return -1;
-      return d3.descending(pa,pb) || d3.ascending(a.school_id,b.school_id);
-    });
+    nodes[key].schools.sort((a,b)=>
+      d3.descending(rankVal(a,yi), rankVal(b,yi)) || d3.ascending(a.school_id,b.school_id));
   }
 
   // assign slots: slot[schoolId][yi] = {x0,x1,y,h}
