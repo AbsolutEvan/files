@@ -134,6 +134,10 @@ def main():
 
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(schools, open(OUT, "w"), indent=1)
+    # Inline copy the viz loads directly (avoids needing a local web server).
+    datajs = os.path.join(os.path.dirname(__file__), "..", "src", "data.js")
+    with open(datajs, "w") as fh:
+        fh.write("window.SCHOOLS = " + json.dumps(schools, separators=(",", ":")) + ";")
 
     # ---- diagnostics ----
     print(f"schools written: {len(schools)}  -> {OUT}")

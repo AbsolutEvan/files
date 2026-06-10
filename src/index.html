@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arizona High Schools — A–F Grades & Pass-Rate Trends</title>
+<script src="vendor/d3.min.js"></script>
+<script src="data.js"></script>
+<style>
+  :root { --bg:#fafafa; --ink:#222; --muted:#777; --line:#e3e3e3; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+         color:var(--ink); background:var(--bg); }
+  header { padding:18px 24px 8px; }
+  h1 { font-size:19px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:13px; }
+  .controls { display:flex; flex-wrap:wrap; gap:18px; align-items:center;
+              padding:12px 24px; border-bottom:1px solid var(--line); }
+  .control { display:flex; align-items:center; gap:8px; }
+  .control label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; }
+  .seg { display:inline-flex; border:1px solid #cfcfcf; border-radius:7px; overflow:hidden; }
+  .seg button { border:0; background:#fff; padding:6px 14px; cursor:pointer; font-size:13px; color:#444; }
+  .seg button.active { background:#2b6cb0; color:#fff; }
+  input[type=search] { padding:6px 10px; border:1px solid #cfcfcf; border-radius:7px; min-width:240px; font-size:13px; }
+  .switch { display:flex; align-items:center; gap:7px; cursor:pointer; font-size:13px; color:#444; }
+  #wrap { position:relative; }
+  svg { display:block; width:100%; height:auto; }
+  .bucket { fill:#efefef; stroke:#dcdcdc; }
+  .bucket-label { font-size:12px; font-weight:600; fill:#555; }
+  .year-label { font-size:13px; font-weight:600; fill:#333; text-anchor:middle; }
+  .ribbon { stroke:none; }
+  .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
+  .legend .bar { width:160px; height:10px; border-radius:5px;
+     background:linear-gradient(to right,#d73027,#fee08b,#1a9850); }
+  .tooltip { position:absolute; pointer-events:none; background:#fff; border:1px solid #ccc;
+     border-radius:8px; padding:9px 11px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12);
+     max-width:260px; opacity:0; transition:opacity .08s; }
+  .tooltip h4 { margin:0 0 4px; font-size:13px; }
+  .tooltip table { border-collapse:collapse; }
+  .tooltip td { padding:1px 5px 1px 0; }
+  .count { color:var(--muted); font-size:12px; margin-left:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Arizona high schools: A–F letter grades over time</h1>
+  <div class="sub">Each ribbon is a school flowing through its letter grade each year (FY2022–FY2025).
+    Ribbon thickness = enrollment. Color = change in Grade&nbsp;11 passing rate over each segment.</div>
+</header>
+
+<div class="controls">
+  <div class="control">
+    <label>Color by</label>
+    <div class="seg" id="subject">
+      <button data-v="ela_pass" class="active">ELA</button>
+      <button data-v="math_pass">Math</button>
+    </div>
+  </div>
+  <div class="control">
+    <label>Find a school</label>
+    <input type="search" id="lookup" list="schoolnames" placeholder="Type a school name…">
+    <datalist id="schoolnames"></datalist>
+  </div>
+  <div class="control">
+    <label class="switch"><input type="checkbox" id="filter"> Only schools with complete data <span class="count" id="ncount"></span></label>
+  </div>
+  <div class="legend">
+    <span>declined</span><span class="bar"></span><span>improved</span>
+    <span style="margin-left:8px;">·</span>
+    <span><svg width="14" height="10"><rect width="14" height="10" rx="2" fill="#cfcfcf"/></svg> no data</span>
+  </div>
+</div>
+
+<div id="wrap">
+  <svg id="chart"></svg>
+  <div class="tooltip" id="tip"></div>
+</div>
+
+<script>
+const GRADES = ["A","B","C","D","F"];
+const GI = Object.fromEntries(GRADES.map((g,i)=>[g,i]));
+const YEARS = [2022,2023,2024,2025];
+const MIN_W = 22;          // fallback enrollment when a graded school lacks a count
+const PX_PER_STUDENT = 0.0032;  // ribbon thickness: students -> pixels (drives height)
+const PAD_BUCKET = 18;     // vertical gap between grade buckets
+const NODE_W = 16;         // width of the grade-bucket bars
+const MARGIN = {top:46, right:30, bottom:20, left:46};
+
+let subject = "ela_pass";
+let filterComplete = false;
+
+const color = d3.scaleDiverging(d3.interpolateRdYlGn).domain([-12,0,12]).clamp(true);
+
+const svg = d3.select("#chart");
+const gRoot = svg.append("g");
+const tip = d3.select("#tip");
+
+// ---- school name lookup ----
+const byName = new Map();
+SCHOOLS.forEach(s => { if (s.name) byName.set(s.name, s); });
+d3.select("#schoolnames").selectAll("option")
+  .data([...byName.keys()].sort()).join("option").attr("value", d=>d);
+
+function hasComplete(s){ return s.years.every(p => p[subject] !== null); }
+
+function visibleSchools(){
+  return filterComplete ? SCHOOLS.filter(hasComplete) : SCHOOLS;
+}
+
+function layout(schools, W){
+  const innerW = W - MARGIN.left - MARGIN.right;
+  const colX = i => MARGIN.left + (innerW - NODE_W) * (i/(YEARS.length-1));
+
+  // group schools into (year,grade) nodes
+  const nodes = {};               // key `${yi}_${grade}` -> {schools:[], sum}
+  YEARS.forEach((y,yi)=> GRADES.forEach(g=> nodes[`${yi}_${g}`]={schools:[],sum:0}));
+  schools.forEach(s=>{
+    s.years.forEach((p,yi)=>{
+      if (p.grade){ const n=nodes[`${yi}_${p.grade}`]; n.schools.push(s); }
+    });
+  });
+
+  // per-school value per year (enrollment or fallback)
+  const w = (s,yi)=>{ const p=s.years[yi]; return p.enrollment || MIN_W; };
+
+  // fixed students->pixels scale; canvas height grows to fit the fullest column
+  let maxCol = 0;
+  YEARS.forEach((y,yi)=>{
+    let sum=0; GRADES.forEach(g=> nodes[`${yi}_${g}`].schools.forEach(s=> sum+=w(s,yi)));
+    maxCol = Math.max(maxCol, sum);
+  });
+  const k = PX_PER_STUDENT;
+  const usable = maxCol * k;
+  const H = usable + MARGIN.top + MARGIN.bottom + (GRADES.length-1)*PAD_BUCKET;
+
+  // order schools within each node to reduce crossings
+  const ord = (s,yi)=> s.years[yi] && s.years[yi].grade ? GI[s.years[yi].grade] : 99;
+  for (const key in nodes){
+    const [yiStr] = key.split("_"); const yi=+yiStr;
+    nodes[key].schools.sort((a,b)=>
+      (ord(a,yi+1)-ord(b,yi+1)) || (ord(a,yi-1)-ord(b,yi-1)) ||
+      (w(b,yi)-w(a,yi)) || d3.ascending(a.school_id,b.school_id));
+  }
+
+  // assign slots: slot[schoolId][yi] = {x0,x1,y,h}
+  const slot = {};
+  YEARS.forEach((y,yi)=>{
+    // column total height to center vertically
+    let colSum=0; GRADES.forEach(g=> nodes[`${yi}_${g}`].schools.forEach(s=> colSum+=w(s,yi)));
+    let yCursor = MARGIN.top + (usable - colSum*k)/2;
+    GRADES.forEach((g)=>{
+      const n = nodes[`${yi}_${g}`];
+      n.y0 = yCursor; n.x = colX(yi);
+      let yy = yCursor;
+      n.schools.forEach(s=>{
+        const h = w(s,yi)*k;
+        (slot[s.school_id] ||= {})[yi] = {x:colX(yi), y:yy, h};
+        yy += h;
+      });
+      n.y1 = yy;
+      yCursor = yy + PAD_BUCKET;
+    });
+  });
+
+  return {nodes, slot, colX, k, H};
+}
+
+function render(){
+  const W = Math.max(900, document.getElementById("wrap").clientWidth);
+  gRoot.selectAll("*").remove();
+
+  const schools = visibleSchools();
+  document.getElementById("ncount").textContent =
+     `(${schools.length} of ${SCHOOLS.length})`;
+  const {nodes, slot, colX, H} = layout(schools, W);
+  svg.attr("viewBox", `0 0 ${W} ${H}`).attr("width", W).attr("height", H);
+
+  // buckets + labels
+  const bg = gRoot.append("g");
+  YEARS.forEach((y,yi)=>{
+    GRADES.forEach(g=>{
+      const n = nodes[`${yi}_${g}`];
+      if (n.y1 - n.y0 < 0.5) return;
+      bg.append("rect").attr("class","bucket")
+        .attr("x", n.x).attr("y", n.y0).attr("width", NODE_W)
+        .attr("height", Math.max(0,n.y1-n.y0)).attr("rx",3);
+      if (yi===0)
+        bg.append("text").attr("class","bucket-label")
+          .attr("x", n.x-8).attr("y",(n.y0+n.y1)/2+4).attr("text-anchor","end").text(g);
+    });
+    gRoot.append("text").attr("class","year-label")
+      .attr("x", colX(yi)+NODE_W/2).attr("y", MARGIN.top-22).text("FY"+y);
+  });
+
+  // ribbons
+  const rb = gRoot.append("g");
+  const paths = [];
+  schools.forEach(s=>{
+    for (let yi=0; yi<YEARS.length-1; yi++){
+      const a = slot[s.school_id]?.[yi], b = slot[s.school_id]?.[yi+1];
+      if (!a || !b) continue;                       // gap -> ribbon breaks
+      const pa = s.years[yi][subject], pb = s.years[yi+1][subject];
+      const known = pa!==null && pb!==null;
+      const col = known ? color(pb-pa) : "#cfcfcf";
+      const x0=a.x+NODE_W, x1=b.x, cx=(x0+x1)/2;
+      const d=`M${x0},${a.y} C${cx},${a.y} ${cx},${b.y} ${x1},${b.y}`
+            +`L${x1},${b.y+b.h} C${cx},${b.y+b.h} ${cx},${a.y+a.h} ${x0},${a.y+a.h}Z`;
+      paths.push({s, d, col, known, yi, pa, pb});
+    }
+  });
+
+  rb.selectAll("path").data(paths).join("path")
+    .attr("class","ribbon")
+    .attr("d", d=>d.d)
+    .attr("fill", d=>d.col)
+    .attr("fill-opacity", d=> d.known ? 0.62 : 0.32)
+    .attr("data-id", d=>d.s.school_id)
+    .on("mousemove", (e,d)=> showTip(e,d.s))
+    .on("mouseenter", (e,d)=> highlight(d.s.school_id))
+    .on("mouseleave", ()=>{ clearHi(); tip.style("opacity",0); });
+
+  applyHighlight();
+}
+
+// ---- highlight handling ----
+let pinned = null;     // school_id chosen via lookup
+function highlight(id){ gRoot.selectAll("path.ribbon")
+  .attr("fill-opacity", function(){ return this.getAttribute("data-id")===id
+     ? 0.95 : 0.07; }); }
+function clearHi(){ if (pinned){ highlight(pinned); } else applyHighlight(); }
+function applyHighlight(){
+  if (pinned){ highlight(pinned); }
+  else gRoot.selectAll("path.ribbon").attr("fill-opacity", function(){
+     return d3.select(this).datum().known ? 0.62 : 0.32; });
+}
+
+function showTip(e, s){
+  const rows = s.years.map(p=>`<tr><td>FY${p.year}</td><td><b>${p.grade||"—"}</b></td>`
+    +`<td>ELA ${fmt(p.ela_pass)}</td><td>Math ${fmt(p.math_pass)}</td>`
+    +`<td>${p.enrollment?d3.format(",")(p.enrollment):"—"}</td></tr>`).join("");
+  tip.html(`<h4>${s.name||s.school_id}</h4>`
+     +`<div style="color:#888;margin-bottom:4px">${s.district||""} · ${s.county||""} County`
+     +`${s.charter?" · charter":""}</div><table>${rows}</table>`)
+     .style("opacity",1)
+     .style("left",(e.offsetX+18)+"px").style("top",(e.offsetY+14)+"px");
+}
+const fmt = v => v===null? "·" : v+"%";
+
+// ---- controls ----
+d3.select("#subject").selectAll("button").on("click", function(){
+  d3.select("#subject").selectAll("button").classed("active",false);
+  d3.select(this).classed("active",true);
+  subject = this.getAttribute("data-v");
+  render();
+});
+d3.select("#filter").on("change", function(){ filterComplete=this.checked; render(); });
+d3.select("#lookup").on("change input", function(){
+  const s = byName.get(this.value);
+  pinned = s ? s.school_id : null;
+  applyHighlight();
+});
+
+window.addEventListener("resize", render);
+render();
+</script>
+</body>
+</html>

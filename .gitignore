@@ -11,3 +11,6 @@ venv/
 
 # OS
 .DS_Store
+
+# local preview renders
+preview_*.png
