@@ -1,0 +1,13 @@
+# Raw / intermediate data — never commit the bulky source files
+data/raw/tmp/
+data/raw/**/*.xlsx
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
