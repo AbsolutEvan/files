@@ -296,21 +296,36 @@ function showHoverTip(e, s){
   tip.html(tipHtml(s)).style("opacity",1)
      .style("left",(e.clientX-r.left+16)+"px").style("top",(e.clientY-r.top+14)+"px");
 }
+let pinCorner = 0;      // which corner the pinned tooltip currently rests in
+let lastCursor = null;  // cursor position relative to #wrap
+
+// the four inset corners of the chart the pinned tooltip can occupy
+function pinCorners(){
+  const node = wrap.node(), W = node.clientWidth, H = node.clientHeight, m = 12;
+  const tw = tipPin.node().offsetWidth || 240, th = tipPin.node().offsetHeight || 110;
+  return [ {left:W-tw-m, top:8}, {left:m, top:8},
+           {left:W-tw-m, top:H-th-m}, {left:m, top:H-th-m} ];
+}
 function showPinTip(){
   const s = byId.get(pinned);
-  if (!s || !curLayout){ tipPin.style("opacity",0); return; }
+  if (!s){ tipPin.style("opacity",0); return; }
   tipPin.html(tipHtml(s)).style("opacity",1);
-  // anchor near the school's right-most endpoint, flipped left to stay on-screen.
-  const sl = curLayout.slot[pinned];
-  let yi=-1; for (let i=YEARS.length-1;i>=0;i--){ if (sl && sl[i]){ yi=i; break; } }
-  let left=12, top=12;
-  if (yi>=0){
-    const node = sl[yi];
-    top = Math.max(8, node.y);
-    left = node.x - 252;
-    if (left < 8) left = node.x + NODE_W + 12;
-  }
-  tipPin.style("left",left+"px").style("top",top+"px");
+  const c = pinCorners()[pinCorner];
+  tipPin.style("left",c.left+"px").style("top",c.top+"px");
+}
+// move the pinned tooltip to the corner farthest from the cursor when it gets close
+function dodgePinTip(){
+  if (!pinned || !lastCursor) return;
+  const cs = pinCorners(), cur = cs[pinCorner];
+  const tw = tipPin.node().offsetWidth, th = tipPin.node().offsetHeight, pad = 24;
+  const near = lastCursor.x > cur.left-pad && lastCursor.x < cur.left+tw+pad
+            && lastCursor.y > cur.top-pad  && lastCursor.y < cur.top+th+pad;
+  if (!near) return;
+  let best = pinCorner, bd = -1;
+  cs.forEach((c,i)=>{ const dx=c.left+tw/2-lastCursor.x, dy=c.top+th/2-lastCursor.y;
+    const d=dx*dx+dy*dy; if (d>bd){ bd=d; best=i; } });
+  if (best !== pinCorner){ pinCorner=best;
+    tipPin.style("left",cs[best].left+"px").style("top",cs[best].top+"px"); }
 }
 const fmt = v => v===null? "·" : v+"%";
 
@@ -321,6 +336,13 @@ d3.select("#subject").selectAll("button").on("click", function(){
   subject = this.getAttribute("data-v");
   render();
 });
+wrap.on("mousemove", function(e){
+  if (!pinned) return;
+  const r = wrap.node().getBoundingClientRect();
+  lastCursor = { x:e.clientX-r.left, y:e.clientY-r.top };
+  dodgePinTip();
+});
+
 d3.select("#filter").on("change", function(){ filterComplete=this.checked; render(); });
 d3.select("#lookup").on("change input", function(){
   const s = byName.get(this.value);
