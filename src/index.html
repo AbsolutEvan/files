@@ -32,7 +32,7 @@
   .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
   .legend .bar { width:170px; height:10px; border-radius:5px;
      background:linear-gradient(to right,
-       #b2182b 0 20%, #ef8a62 20% 40%, #9aa0a6 40% 60%, #67c27e 60% 80%, #1a7a3a 80% 100%); }
+       #b2182b 0 25%, #ef8a62 25% 50%, #67c27e 50% 75%, #1a7a3a 75% 100%); }
   .tooltip { position:absolute; pointer-events:none; background:#fff; border:1px solid #ccc;
      border-radius:8px; padding:9px 11px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12);
      max-width:260px; opacity:0; transition:opacity .08s; }
@@ -91,10 +91,11 @@ const MARGIN = {top:46, right:30, bottom:20, left:46};
 let subject = "ela_pass";
 let filterComplete = false;
 
-// Trend color: near-binary. Small neutral band around 0, then saturated red / green.
-// Neutral is a medium gray so flat ribbons stay visible against the white background.
-const TREND_STOPS = ["#b2182b","#ef8a62","#9aa0a6","#67c27e","#1a7a3a"];
-const color = d3.scaleThreshold().domain([-5,-1.5,1.5,5]).range(TREND_STOPS);
+// Trend color: binary at zero. Any decline is red, any improvement is green,
+// with darker shades for larger moves. No neutral band, so gray is reserved
+// for "no data" only and even small declines (e.g. -1) read clearly as red.
+const TREND_STOPS = ["#b2182b","#ef8a62","#67c27e","#1a7a3a"];
+const color = d3.scaleThreshold().domain([-6,0,6]).range(TREND_STOPS);
 // Grade buckets: ordered, vivid blue -> magenta scale, distinct from the red/green trends.
 const GRADE_COLORS = {A:"#0a2f7a", B:"#2563c9", C:"#6f42c1", D:"#a51bb5", F:"#d4239e"};
 
