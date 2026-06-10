@@ -32,13 +32,13 @@ window.SCHOOLS = [{"school_id":"1000047","name":"Think Through Academy","distric
   #wrap { position:relative; }
   svg { display:block; width:100%; height:auto; }
   .bucket { stroke-width:0.8; }
-  .bucket-label { font-size:12px; font-weight:600; fill:#555; }
+  .bucket-label { font-size:24px; font-weight:800; fill:#555; }
   .year-label { font-size:13px; font-weight:600; fill:#333; text-anchor:middle; }
   .ribbon { stroke:none; }
   .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
   .legend .bar { width:170px; height:10px; border-radius:5px;
      background:linear-gradient(to right,
-       #b2182b 0 20%, #ef8a62 20% 40%, #e6e6e6 40% 60%, #67c27e 60% 80%, #1a7a3a 80% 100%); }
+       #b2182b 0 20%, #ef8a62 20% 40%, #9aa0a6 40% 60%, #67c27e 60% 80%, #1a7a3a 80% 100%); }
   .tooltip { position:absolute; pointer-events:none; background:#fff; border:1px solid #ccc;
      border-radius:8px; padding:9px 11px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12);
      max-width:260px; opacity:0; transition:opacity .08s; }
@@ -97,12 +97,11 @@ let subject = "ela_pass";
 let filterComplete = false;
 
 // Trend color: near-binary. Small neutral band around 0, then saturated red / green.
-const TREND_STOPS = ["#b2182b","#ef8a62","#e6e6e6","#67c27e","#1a7a3a"];
+// Neutral is a medium gray so flat ribbons stay visible against the white background.
+const TREND_STOPS = ["#b2182b","#ef8a62","#9aa0a6","#67c27e","#1a7a3a"];
 const color = d3.scaleThreshold().domain([-5,-1.5,1.5,5]).range(TREND_STOPS);
-// Grade buckets: ordered cool ramp (navy -> magenta), distinct from the red/green trends.
-const gradeRamp = d3.interpolateRgb("#0a2f7a","#b1239f");
-const GRADE_COLORS = Object.fromEntries(
-  GRADES.map((g,i)=>[g, gradeRamp(i/(GRADES.length-1))]));
+// Grade buckets: ordered, vivid blue -> magenta scale, distinct from the red/green trends.
+const GRADE_COLORS = {A:"#0a2f7a", B:"#2563c9", C:"#6f42c1", D:"#a51bb5", F:"#d4239e"};
 
 const svg = d3.select("#chart");
 const gRoot = svg.append("g");
