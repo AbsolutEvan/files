@@ -252,7 +252,10 @@ let pinned = null;     // school_id chosen via lookup
 function highlight(id){ gRoot.selectAll("path.ribbon")
   .attr("fill-opacity", function(){ return this.getAttribute("data-id")===id ? 0.95 : 0.06; })
   .attr("stroke", function(){ return this.getAttribute("data-id")===id ? "#222" : "none"; })
-  .attr("stroke-width", function(){ return this.getAttribute("data-id")===id ? 0.7 : 0; }); }
+  .attr("stroke-width", function(){ return this.getAttribute("data-id")===id ? 0.7 : 0; })
+  // raise the highlighted school's segments above the dimmed crowd, otherwise a
+  // ribbon in a dense band gets buried under hundreds of faint overlapping ones.
+  .filter(function(){ return this.getAttribute("data-id")===id; }).raise(); }
 function clearHi(){ if (pinned){ highlight(pinned); } else applyHighlight(); }
 function applyHighlight(){
   if (pinned){ highlight(pinned); }
