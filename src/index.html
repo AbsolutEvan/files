@@ -31,7 +31,7 @@
   .ribbon { stroke:none; }
   .legend { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:12px; }
   .legend .bar { width:160px; height:10px; border-radius:5px;
-     background:linear-gradient(to right,#5e3c99,#f7f7f7,#e66101); }
+     background:linear-gradient(to right,#d73027,#f7f7f7,#1a9850); }
   .tooltip { position:absolute; pointer-events:none; background:#fff; border:1px solid #ccc;
      border-radius:8px; padding:9px 11px; font-size:12px; box-shadow:0 4px 14px rgba(0,0,0,.12);
      max-width:260px; opacity:0; transition:opacity .08s; }
@@ -81,7 +81,7 @@ const GRADES = ["A","B","C","D","F"];
 const GI = Object.fromEntries(GRADES.map((g,i)=>[g,i]));
 const YEARS = [2022,2023,2024,2025];
 const MIN_W = 22;          // fallback enrollment when a graded school lacks a count
-const PX_PER_STUDENT = 0.0032;  // ribbon thickness: students -> pixels (drives height)
+const TARGET_H = 720;      // target height (px) of the tallest column's flow area
 const PAD_BUCKET = 18;     // vertical gap between grade buckets
 const NODE_W = 16;         // width of the grade-bucket bars
 const MARGIN = {top:46, right:30, bottom:20, left:46};
@@ -89,8 +89,8 @@ const MARGIN = {top:46, right:30, bottom:20, left:46};
 let subject = "ela_pass";
 let filterComplete = false;
 
-const color = d3.scaleDiverging(d3.interpolatePuOr).domain([12,0,-12]).clamp(true);
-const GRADE_COLORS = {A:"#1a9850", B:"#a6d96a", C:"#ffd24d", D:"#fc8d59", F:"#d73027"};
+const color = d3.scaleDiverging(d3.interpolateRdYlGn).domain([-12,0,12]).clamp(true);
+const GRADE_COLORS = {A:"#084594", B:"#2171b5", C:"#4292c6", D:"#6baed6", F:"#9ecae1"};
 
 const svg = d3.select("#chart");
 const gRoot = svg.append("g");
@@ -130,16 +130,15 @@ function layout(schools, W){
     let sum=0; GRADES.forEach(g=> nodes[`${yi}_${g}`].schools.forEach(s=> sum+=w(s,yi)));
     maxCol = Math.max(maxCol, sum);
   });
-  const k = PX_PER_STUDENT;
-  const usable = maxCol * k;
+  const k = TARGET_H / maxCol;   // students -> pixels, sized so tallest column = TARGET_H
+  const usable = TARGET_H;
   const H = usable + MARGIN.top + MARGIN.bottom + (GRADES.length-1)*PAD_BUCKET;
 
-  // order schools within each node to reduce crossings
-  const ord = (s,yi)=> s.years[yi] && s.years[yi].grade ? GI[s.years[yi].grade] : 99;
+  // Stable, size-based order within each bucket: bigger schools ride near the
+  // top, so a school that keeps the same grade stays roughly level year to year.
   for (const key in nodes){
-    const [yiStr] = key.split("_"); const yi=+yiStr;
+    const yi = +key.split("_")[0];
     nodes[key].schools.sort((a,b)=>
-      (ord(a,yi+1)-ord(b,yi+1)) || (ord(a,yi-1)-ord(b,yi-1)) ||
       (w(b,yi)-w(a,yi)) || d3.ascending(a.school_id,b.school_id));
   }
 
